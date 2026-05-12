@@ -1,0 +1,41 @@
+[project]
+name = "training-module"
+version = "0.1.0"
+description = "Pluggable, configurable training framework for ML tasks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.2.6",
+    "pandas>=2.3.3",
+    "pyyaml>=6.0.3",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+training-module = "train:main"
+training-train = "train:main"
+train = "train:main"
+
+[dependency-groups]
+dev = [
+    "isort>=8.0.1",
+    "ruff>=0.1.0",
+    "pytest>=7.0.0",
+    "build>=1.0.0",
+    "setuptools>=68.0.0",
+    "wheel>=0.41.0",
+]
+
+[tool.setuptools]
+packages = ["training"]
+py-modules = ["train", "main"]
+
+[tool.setuptools.package-data]
+# Include YAML configs in training package if needed
+training = ["**/*.py"]
+
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"

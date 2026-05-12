@@ -1,0 +1,6 @@
+task: classification
+num_classes: 2
+pretrained: false
+loss: cross_entropy
+metrics:
+  - accuracy

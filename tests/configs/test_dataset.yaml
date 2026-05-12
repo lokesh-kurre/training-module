@@ -1,0 +1,9 @@
+# Test dataset: minimal mock data for fast local testing
+# Used by test configurations to avoid downloading large datasets
+
+path: ../data
+train: train_split.csv
+val: val_split.csv
+names:
+  0: class_0
+  1: class_1

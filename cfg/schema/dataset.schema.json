@@ -1,0 +1,63 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Dataset YAML Schema",
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+        "path": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "description": "Dataset root path used to resolve train/val/test relative entries."
+        },
+        "train": {
+            "type": [
+                "string",
+                "array",
+                "null"
+            ]
+        },
+        "val": {
+            "type": [
+                "string",
+                "array",
+                "null"
+            ]
+        },
+        "test": {
+            "type": [
+                "string",
+                "array",
+                "null"
+            ]
+        },
+        "download": {
+            "type": [
+                "string",
+                "null"
+            ]
+        },
+        "names": {
+            "oneOf": [
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            ]
+        }
+    },
+    "required": [
+        "train",
+        "val",
+        "names"
+    ]
+}

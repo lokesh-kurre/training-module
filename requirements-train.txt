@@ -1,0 +1,7 @@
+# Training backbones for classification tasks
+# Install with CPU wheels to avoid large CUDA downloads:
+# uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu -r requirements-train.txt
+
+torch
+torchvision
+timm

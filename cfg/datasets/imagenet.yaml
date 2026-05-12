@@ -1,0 +1,19 @@
+# Example ImageNet-style dataset YAML (Ultralytics-like data format)
+# Resolution rules:
+# 1) `path` is resolved relative to this dataset.yaml location.
+# 2) train/val/test are resolved relative to resolved `path`.
+$schema: ../schema/dataset.schema.json
+path: ../../data/imagenet
+train: train
+val: val
+test: test
+
+# Optional external download script or URL.
+download: null
+
+names:
+  0: tench
+  1: goldfish
+  2: great_white_shark
+  3: tiger_shark
+  4: hammerhead

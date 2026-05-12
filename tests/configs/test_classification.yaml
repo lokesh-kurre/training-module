@@ -1,0 +1,36 @@
+# Test configuration: minimal classification task
+# Used for fast smoke tests without requiring full dataset
+
+task: classification
+data: tests/configs/test_dataset.yaml
+mode: train
+
+model:
+  architecture: tiny_cnn
+  num_classes: 2
+
+batch: 4
+epochs: 1
+imgsz: 32
+device: cpu
+
+trainer:
+  epochs: 1
+  log_level: debug
+  show_progress_bar: false
+  profile_timing: false
+
+optimizer:
+  name: adam
+  lr: 0.001
+
+scheduler:
+  name: constant
+
+dataloader:
+  num_workers: 0
+  batch_size: 4
+
+run:
+  log_level: info
+  save_resolved_config: true

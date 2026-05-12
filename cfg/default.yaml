@@ -1,0 +1,146 @@
+seed: 42
+task: classification
+data: cfg/datasets/imagenet.yaml
+run:
+  name: null
+  root_dir: run
+  save_resolved_config: true
+resume:
+  enabled: false
+  checkpoint_path: null
+  strict: false
+  load_optimizer: true
+  load_scheduler: true
+epochs: 10
+device: cpu
+mixed_precision: false
+imgsz: [224, 224]
+layout: CHW
+batch: 32
+workers: 2
+dataloader:
+  backend: torch
+  pin_memory: null
+  persistent_workers: null
+  prefetch_factor: null
+optimizer: adam
+lr0: 0.001
+momentum: 0.9
+weight_decay: 0.0
+scheduler: cosine
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+degrees: 0.0
+translate: 0.1
+scale: 0.5
+shear: 0.0
+perspective: 0.0
+flipud: 0.0
+fliplr: 0.5
+erasing: 0.0
+distributed:
+  enabled: false
+  backend: gloo
+  find_unused_parameters: false
+  broadcast_buffers: true
+  sync_batchnorm: false
+model_name: torchvision_backbone
+architecture: mobilenet_v1
+num_classes: 5
+pretrained: true
+pretrained_dir: pretrained_weights
+pretrained_strict: false
+architectures_supported:
+  - alexnet
+  - mobilenet_v1
+  - mobilenet_v2
+  - mobilenet_v3_small
+  - mobilenet_v3_large
+  - resnet18
+  - resnet34
+  - resnet50
+  - resnet101
+  - densenet121
+  - efficientnet_b0
+  - efficientnet_b3
+  - vgg11
+  - vgg11_bn
+  - vgg13
+  - vgg13_bn
+  - vgg16
+  - vgg16_bn
+  - vgg19
+  - vgg19_bn
+  - convnext_tiny
+  - vit_b_16
+  - swin_t
+  - tiny_cnn
+model_builder: training.tasks.classification.model.build_model
+dataset_builder: training.data.datasets.factory.build_dataset_from_config
+dataloader_builder: training.data.loaders.builder.build_dataloader
+loss: cross_entropy
+loss_builder: training.tasks.classification.losses.build_loss
+optimizer_builder: training.utils.optimizer.build_optimizer
+scheduler_builder: training.utils.optimizer.build_scheduler
+metrics_fn: training.tasks.classification.metrics.compute_metrics
+metrics:
+  - categoricalaccuracy
+callbacks:
+  enabled:
+    - checkpoint
+    - metrics
+  monitor: val_loss
+  mode: min
+  save_freq: 2
+
+# Optional shared-memory generator backend.
+# Activate with:
+# --set dataloader.backend=data_gen
+# --set dataset.backend=data_gen
+# and configure split data + read_func below.
+#
+# Dataset reference style:
+# data: cfg/datasets/<name>.yaml
+# (path is resolved relative to project root/current working directory)
+#
+# For combining multiple datasets in one experiment (torch backend), use:
+# dataset:
+#   names: [dataset_a, dataset_b]
+#
+# Preferred dataset YAML split input shape:
+# dataset:
+#   splits:
+#     train: data/<dataset>/train.csv
+#     val: data/<dataset>/val.csv
+#     test: data/<dataset>/test.csv
+#
+# Optional: configure a torch Dataset class/callable for torch backend.
+# It must return torch.utils.data.Dataset and accept:
+#   fn(cfg, split=..., rank=..., world_size=..., runtime=...)
+# Example:
+# dataset:
+#   torch_dataset_class: training.data.datasets.synthetic.build_synthetic_dataset
+dataset_generator:
+  # For combining datasets in one experiment, provide multiple sources per split:
+  # data:
+  #   train: ["data/a_train.csv", "data/b_train.csv"]
+  #   val: ["data/a_val.csv", "data/b_val.csv"]
+  #   test: ["data/a_test.csv", "data/b_test.csv"]
+  data:
+    train: null
+    val: null
+    test: null
+  # read_func signature should accept:
+  #   fn(sample, out_size, layout, ...)
+  # where out_size includes channels based on layout:
+  #   CHW -> [C, H, W], HWC -> [H, W, C]
+  read_func: training.data.datasets.readers.classification_read_uri_image
+  input_dtype: "(224,224,3)f4"
+  batch_size: 32
+  no_of_workers: 4
+  no_of_worker_threads: 8
+  qsize: 8
+  take: null
+  infinite: false
+  shuffle: true

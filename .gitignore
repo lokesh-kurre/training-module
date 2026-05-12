@@ -1,0 +1,83 @@
+# Python
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+*.whl
+dist/
+build/
+
+# Virtual Environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Databases
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+nosetests.xml
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+notebooks/**/*.ipynb_checkpoints
+
+# Project-specific
+graphify-out/
+run/
+data/**/*.*
+!data/.gitkeep
+notebooks/**/*.ipynb
+*.egg-info
+
+# Test data artifacts (but keep test configs)
+tests/data/**/*.jpg
+tests/data/**/*.png
+tests/data/**/*.pkl
+!tests/data/
+!tests/configs/
+
+# Environment
+.python-version
+.env
+!sample.env
+
+# Build artifacts
+*.so
+.eggs/
+
+# IDE extensions
+.pylintrc
+.flake8
+
+# Temporary files
+*.tmp
+*.bak
+*.swp

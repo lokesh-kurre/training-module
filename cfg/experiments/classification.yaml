@@ -1,0 +1,8 @@
+name: baseline
+task: classification
+dataset:
+  name: imagenet
+model:
+  architecture: mobilenet_v1
+  num_classes: 5
+  pretrained: true

@@ -1,0 +1,3 @@
+image_path,label
+tests/data/test_dataset/img_val_001.jpg,0
+tests/data/test_dataset/img_val_002.jpg,1
