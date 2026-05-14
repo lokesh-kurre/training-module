@@ -1,0 +1,45 @@
+task: gan
+
+# Task-specific builders
+model_builder: training.tasks.gan.model.build_model
+loss_builder: training.tasks.gan.losses.build_loss
+metrics_fn: training.tasks.gan.metrics.compute_metrics
+
+# Default GAN model settings
+model_name: gan_system
+architecture: gan_mlp
+model:
+  gan:
+    latent_dim: 128
+    hidden_dim: 256
+    weight_d: 1.0
+    weight_g: 1.0
+    weight_recon: 10.0
+
+# Use classification-style URI image reader pipeline by default.
+loss: gan_composite
+metrics:
+  - d_real_score
+  - d_fake_score
+  - d_acc_real
+  - d_acc_fake
+  - g_adv_loss
+  - d_loss
+  - recon_l1
+
+callbacks:
+  enabled:
+    - checkpoint
+    - metrics
+    - gan_samples
+  monitor: val_recon_l1
+  mode: min
+  save_freq: 2
+  gan_samples:
+    save_freq: 2
+    num_samples: 16
+    nrow: 4
+    normalize: true
+    with_headers: true
+    row_header_prefix: Style
+    col_header_prefix: Content

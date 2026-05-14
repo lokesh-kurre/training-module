@@ -168,8 +168,35 @@ class Trainer:
         callbacks: CallbackManager,
         amp_enabled: bool = False,
         scaler: Any = None,
+        optimizers_dict: dict[str, Any] | None = None,
     ) -> dict[str, float]:
-        """Train one epoch and return metrics."""
+        """Train one epoch and return metrics.
+        
+        Supports both single-optimizer (classification) and multi-optimizer (GAN) tasks.
+        """
+        import torch
+
+        task.model.train()
+        
+        # Branch: single-optimizer or multi-optimizer (GAN) path
+        if optimizers_dict is not None:
+            return self._train_epoch_multi_optimizer(state, task, train_loader, device, runtime, callbacks, optimizers_dict, amp_enabled, scaler)
+        else:
+            return self._train_epoch_single_optimizer(state, task, train_loader, optimizer, device, runtime, callbacks, amp_enabled, scaler)
+    
+    def _train_epoch_single_optimizer(
+        self,
+        state: TrainState,
+        task: Any,
+        train_loader: Any,
+        optimizer: Any,
+        device: Any,
+        runtime: Any,
+        callbacks: CallbackManager,
+        amp_enabled: bool = False,
+        scaler: Any = None,
+    ) -> dict[str, float]:
+        """Train one epoch with single optimizer (classification, etc)."""
         import torch
 
         task.model.train()
@@ -177,6 +204,10 @@ class Trainer:
         total_loss = 0.0
         num_batches = 0
         trainer_cfg = self.cfg.get("trainer", {})
+        progress_bar_enabled = bool(trainer_cfg.get("show_progress_bar", True))
+        heartbeat_enabled = bool(trainer_cfg.get("log_heartbeat", True))
+        heartbeat_minutes = float(trainer_cfg.get("heartbeat_minutes", 15.0))
+        heartbeat_seconds = max(0.0, heartbeat_minutes * 60.0)
         max_steps_raw = trainer_cfg.get("steps_per_epoch", trainer_cfg.get("max_steps_per_epoch"))
         max_steps: int | None = None
         if max_steps_raw is not None:
@@ -214,6 +245,7 @@ class Trainer:
         batch_idx = 0
         last_heartbeat = time.perf_counter()
         running_acc_key: str | None = None
+
         while True:
             if max_steps is not None and batch_idx >= max_steps:
                 break
@@ -349,6 +381,192 @@ class Trainer:
                     timing_log_level,
                     f"timing.{key}: total={value:.3f}s pct={pct:.1f}% avg_batch_ms={avg_ms:.2f}",
                 )
+
+        total_loss = reduce_scalar(total_loss, runtime)
+        totals = {name: reduce_scalar(value, runtime) for name, value in totals.items()}
+        num_batches = max(1.0, reduce_scalar(float(num_batches), runtime))
+
+        result = {"train_loss": total_loss / num_batches}
+        for metric_name, total_value in totals.items():
+            result[f"train_{metric_name}"] = total_value / num_batches
+        return result
+    
+    def _train_epoch_multi_optimizer(
+        self,
+        state: TrainState,
+        task: Any,
+        train_loader: Any,
+        device: Any,
+        runtime: Any,
+        callbacks: CallbackManager,
+        optimizers_dict: dict[str, Any],
+        amp_enabled: bool = False,
+        scaler: Any = None,
+    ) -> dict[str, float]:
+        """Train one epoch with multiple optimizers (GANs with alternating D/G updates)."""
+        import torch
+
+        task.model.train()
+        totals: dict[str, float] = {}
+        total_loss = 0.0
+        num_batches = 0
+        trainer_cfg = self.cfg.get("trainer", {})
+        progress_bar_enabled = bool(trainer_cfg.get("show_progress_bar", True))
+        heartbeat_enabled = bool(trainer_cfg.get("log_heartbeat", True))
+        heartbeat_minutes = float(trainer_cfg.get("heartbeat_minutes", 15.0))
+        heartbeat_seconds = max(0.0, heartbeat_minutes * 60.0)
+        max_steps_raw = trainer_cfg.get("steps_per_epoch", trainer_cfg.get("max_steps_per_epoch"))
+        max_steps: int | None = None
+        if max_steps_raw is not None:
+            max_steps = int(max_steps_raw)
+            if max_steps <= 0:
+                max_steps = None
+
+        try:
+            train_loader_len = len(train_loader)
+        except TypeError:
+            train_loader_len = None
+        if max_steps is None and train_loader_len is not None:
+            max_steps = int(train_loader_len)
+
+        loop_total = max_steps if max_steps is not None else train_loader_len
+        train_iter = iter(train_loader)
+        batch_idx = 0
+        last_heartbeat = time.perf_counter()
+        running_acc_key: str | None = None
+        d_step_fn = getattr(task, "training_step_discriminator", None)
+        g_step_fn = getattr(task, "training_step_generator", None)
+
+        while True:
+            if max_steps is not None and batch_idx >= max_steps:
+                break
+
+            try:
+                batch = next(train_iter)
+            except StopIteration:
+                break
+
+            batch = self._move_batch_to_device(batch, device)
+
+            opt_d = optimizers_dict.get("discriminator")
+            opt_g = optimizers_dict.get("generator")
+
+            # Discriminator step
+            if callable(d_step_fn):
+                if amp_enabled:
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                        step_d = d_step_fn(batch)
+                else:
+                    step_d = d_step_fn(batch)
+            else:
+                if amp_enabled:
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                        step_d = task.training_step(batch)
+                else:
+                    step_d = task.training_step(batch)
+
+            if opt_d is not None:
+                opt_d.zero_grad()
+                if amp_enabled and scaler is not None:
+                    scaler.scale(step_d.loss).backward()
+                    scaler.step(opt_d)
+                else:
+                    step_d.loss.backward()
+                    opt_d.step()
+
+            # Generator step
+            if callable(g_step_fn):
+                if amp_enabled:
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                        step_g = g_step_fn(batch)
+                else:
+                    step_g = g_step_fn(batch)
+            else:
+                if amp_enabled:
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                        step_g = task.training_step(batch)
+                else:
+                    step_g = task.training_step(batch)
+
+            # Ensure discriminator grads do not accumulate during generator backward.
+            if opt_d is not None:
+                opt_d.zero_grad()
+
+            if opt_g is not None:
+                opt_g.zero_grad()
+                if amp_enabled and scaler is not None:
+                    scaler.scale(step_g.loss).backward()
+                    scaler.step(opt_g)
+                else:
+                    step_g.loss.backward()
+                    opt_g.step()
+
+            if amp_enabled and scaler is not None:
+                scaler.update()
+
+            step = step_g
+            merged_metrics = dict(step_d.metrics)
+            merged_metrics.update(step_g.metrics)
+            merged_metrics["d_step_loss"] = float(step_d.loss.item())
+            merged_metrics["g_step_loss"] = float(step_g.loss.item())
+            merged_loss = float(step_d.loss.item()) + float(step_g.loss.item())
+
+            batch_idx += 1
+            state.batch = batch
+            state.outputs = {"loss": merged_loss, **{k: float(v) for k, v in merged_metrics.items()}}
+            state.step = batch_idx
+            state.global_step += 1
+            callbacks.on_batch_end(state)
+
+            total_loss += merged_loss
+            for metric_name, metric_value in merged_metrics.items():
+                totals[metric_name] = totals.get(metric_name, 0.0) + float(metric_value)
+            num_batches += 1
+
+            if running_acc_key is None:
+                running_acc_key = self._first_accuracy_key(totals)
+
+            running_loss = total_loss / max(1, num_batches)
+            running_acc = None
+            if running_acc_key is not None:
+                running_acc = totals[running_acc_key] / max(1, num_batches)
+
+            lr_now = None
+            opt_for_lr = opt_g if opt_g is not None else opt_d
+            if opt_for_lr is not None and getattr(opt_for_lr, "param_groups", None):
+                try:
+                    lr_now = float(opt_for_lr.param_groups[0].get("lr"))
+                except Exception:
+                    lr_now = None
+
+            if self._is_rank0(runtime):
+                if progress_bar_enabled:
+                    step_text = f"{batch_idx}/{loop_total}" if loop_total is not None else f"{batch_idx}/?"
+                    bar = self._format_progress_bar(batch_idx, loop_total)
+                    line = f"\rEpoch {state.epoch + 1} {bar} {step_text} loss={running_loss:.4f}"
+                    if running_acc is not None:
+                        line += f" acc={running_acc:.4f}"
+                    if lr_now is not None:
+                        line += f" lr={lr_now:.6f}"
+                    print(line, end="", flush=True)
+
+                if heartbeat_enabled and heartbeat_seconds > 0.0:
+                    now = time.perf_counter()
+                    if now - last_heartbeat >= heartbeat_seconds:
+                        if progress_bar_enabled:
+                            print("")
+                        progress = f"{batch_idx}/{loop_total}" if loop_total is not None else str(batch_idx)
+                        hb_msg = f"Heartbeat: epoch={state.epoch + 1}, step={progress}, running_loss={running_loss:.4f}"
+                        if running_acc is not None:
+                            hb_msg += f", running_acc={running_acc:.4f}"
+                        if lr_now is not None:
+                            hb_msg += f", lr={lr_now:.6f}"
+                        print(hb_msg)
+                        self._append_log(state.run_dir, "info", hb_msg)
+                        last_heartbeat = now
+
+        if self._is_rank0(runtime) and progress_bar_enabled and num_batches > 0:
+            print("")
 
         total_loss = reduce_scalar(total_loss, runtime)
         totals = {name: reduce_scalar(value, runtime) for name, value in totals.items()}
@@ -589,6 +807,28 @@ class Trainer:
         try:
             task, optimizer, scheduler, train_loader, val_loader, _test_loader = self._build_task_and_loaders(device, runtime)
 
+            # Check if task uses multi-optimizer (GAN, etc.)
+            optimizers_dict = None
+            if hasattr(task, "get_optimizers") and callable(task.get_optimizers):
+                optimizers_dict = task.get_optimizers()
+                if isinstance(optimizers_dict, dict) and self._is_rank0(runtime):
+                    opt_names = ", ".join(sorted(str(k) for k in optimizers_dict.keys()))
+                    msg = f"Multi-optimizer mode enabled: {opt_names}"
+                    self._append_log(run_dir, "info", msg)
+
+            # In multi-optimizer mode, rebind primary optimizer/scheduler to the
+            # optimizer that is actually stepped in GAN loop (generator preferred).
+            if isinstance(optimizers_dict, dict) and optimizers_dict:
+                schedule_optimizer = optimizers_dict.get("generator")
+                if schedule_optimizer is None:
+                    schedule_optimizer = next(iter(optimizers_dict.values()))
+                optimizer = schedule_optimizer
+
+                scheduler_builder = get_obj_by_name(
+                    self.cfg.get("trainer", {}).get("scheduler_builder", "training.utils.optimizer.build_scheduler")
+                )
+                scheduler = scheduler_builder(schedule_optimizer, self.cfg)
+
             start_epoch = 0
             resume_enabled, resume_path, resume_strict, resume_load_opt, resume_load_sched = self._resume_options()
             if resume_enabled:
@@ -632,6 +872,13 @@ class Trainer:
                     model_ref = task.model.module if hasattr(task.model, "module") else task.model
                     dummy_input = torch.randn(1, in_channels, h, w, device=device)
                     print_module_summary(model_ref, [dummy_input], log_file=log_file)
+
+                    # GANSystem.forward uses encoder+generator path; discriminator is
+                    # not invoked there, so include a dedicated discriminator summary.
+                    if hasattr(model_ref, "discriminator"):
+                        self._append_log(run_dir, "info", "Discriminator summary:")
+                        flat_dummy_input = dummy_input.view(dummy_input.shape[0], -1)
+                        print_module_summary(model_ref.discriminator, [flat_dummy_input], log_file=log_file)
                 except Exception as exc:
                     self.logger.warning("Model summary failed and was ignored: %s", exc)
 
@@ -668,6 +915,7 @@ class Trainer:
                     callbacks,
                     amp_enabled=amp_enabled,
                     scaler=scaler,
+                    optimizers_dict=optimizers_dict,
                 )
 
                 # Validate
@@ -703,7 +951,6 @@ class Trainer:
                         lr_after_step = float(optimizer.param_groups[0].get("lr"))
                     except Exception:
                         lr_after_step = None
-
                 train_metric_str = ", ".join(
                     f"{name}={value:.4f}" for name, value in train_metrics.items() if name != "train_loss"
                 ) or "no metrics"

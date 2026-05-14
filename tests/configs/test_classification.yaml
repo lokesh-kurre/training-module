@@ -10,7 +10,7 @@ model:
   num_classes: 2
 
 batch: 4
-epochs: 1
+epochs: 5
 imgsz: 32
 device: cpu
 

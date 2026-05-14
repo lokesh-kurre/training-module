@@ -1,0 +1,52 @@
+task: gan
+experiment: sample_gan
+
+data: cfg/datasets/sample_generator.yaml
+
+# Keep this experiment self-contained so it works with:
+#   python train.py -c cfg/experiments/gan/sample_gan.yaml
+model_builder: training.tasks.gan.model.build_model
+loss_builder: training.tasks.gan.losses.build_loss
+metrics_fn: training.tasks.gan.metrics.compute_metrics
+loss: gan_composite
+metrics:
+  - d_real_score
+  - d_fake_score
+  - d_acc_real
+  - d_acc_fake
+  - g_adv_loss
+  - d_loss
+  - recon_l1
+
+imgsz: [224, 224]
+layout: CHW
+batch: 16
+workers: 2
+
+epochs: 5
+optimizer: adam
+lr0: 0.0002
+weight_decay: 0.0
+scheduler: null
+
+model:
+  gan:
+    latent_dim: 128
+    hidden_dim: 256
+    weight_d: 1.0
+    weight_g: 1.0
+    weight_recon: 10.0
+
+callbacks:
+  enabled:
+    - checkpoint
+    - metrics
+    - gan_samples
+  monitor: val_recon_l1
+  mode: min
+  save_freq: 1
+  gan_samples:
+    save_freq: 1
+    num_samples: 16
+    nrow: 4
+    normalize: true
